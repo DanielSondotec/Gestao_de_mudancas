@@ -6,7 +6,7 @@ const SESSION_KEY = "sgi-auth:session:v1";
 
 // Dados do usuário que o app pode usar (sem a senha).
 function publico(u) {
-  return { usuario: u.usuario, nome: u.nome, perfil: u.perfil };
+  return { usuario: u.usuario, nome: u.nome, papel: u.papel, email: u.email};
 }
 
 function loadSession() {

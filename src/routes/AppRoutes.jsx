@@ -12,6 +12,7 @@ import MudancaForm from "../pages/MudancaForm";
 import Acoes from "../pages/Acoes";
 import Historico from "../pages/Historico";
 import Configuracoes from "../pages/Configuracoes";
+import RequirePermission from "../components/RequirePermission";
 
 function NotFound() {
   return (
@@ -46,11 +47,36 @@ function AppRoutes() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/mudancas" element={<Mudancas />} />
         <Route path="/mudancas/:id" element={<MudancaDetalhe />} />
-        <Route path="/mudancas/:id/editar" element={<MudancaForm />} />
-        <Route path="/nova-mudanca" element={<MudancaForm />} />
+        <Route 
+          path="/mudancas/:id/editar"
+          element={
+          <RequirePermission permissao="editarMudanca">
+            <MudancaForm />
+          </RequirePermission>
+        } />
+        <Route
+          path="/nova-mudanca"
+          element={
+            <RequirePermission permissao="criarMudanca">
+              <MudancaForm />
+            </RequirePermission>
+          } />
         <Route path="/acoes" element={<Acoes />} />
-        <Route path="/historico" element={<Historico />} />
-        <Route path="/configuracoes" element={<Configuracoes />} />
+        <Route
+          path="/historico"
+          element={
+            <RequirePermission permissao="verHistorico">
+              <Historico />
+            </RequirePermission>
+          } />
+        <Route
+          path="/configuracoes"
+          element={
+            <RequirePermission permissao="configuracoes">
+              <Configuracoes />
+            </RequirePermission>
+          }
+        />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

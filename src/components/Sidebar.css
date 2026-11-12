@@ -1,13 +1,21 @@
 
 .sidebar {
   width: 260px;
-  min-height: 100vh;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
   background: #111827;
   color: #ffffff;
   display: flex;
   flex-direction: column;
   padding: 24px 16px;
   box-sizing: border-box;
+}
+
+.sidebar.fechada {
+  display: none;
 }
 
 .sidebar-brand {
@@ -77,6 +85,10 @@
 
 .sidebar-bottom {
   margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  background: #111827;
+  padding-top: 12px;
 }
 
 .sidebar-user {
@@ -86,6 +98,31 @@
   border-top: 1px solid #374151;
   margin-top: 20px;
   padding: 20px 5px 0;
+}
+
+.sidebar-toggle {
+  margin-left: auto;
+  display: flex;
+  padding: 6px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: #1f2937;
+  color: #ffffff;
+}
+
+.sidebar-logout {
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
 }
 
 .user-avatar {

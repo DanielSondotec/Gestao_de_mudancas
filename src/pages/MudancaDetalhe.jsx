@@ -1,6 +1,8 @@
 import { Fragment, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Pencil, Printer, RotateCcw, Trash2 } from "lucide-react";
+import { useAuth } from "../hooks/useAuth";
+import { pode } from "../utils/permissoes";
 
 import StatusBadge from "../components/StatusBadge";
 import CompleteAction from "../components/CompleteAction";
@@ -92,6 +94,7 @@ function EficaciaForm({ changeId }) {
 function MudancaDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { changes, deleteChange, reopenEficacia, approveChange, revokeApproval } = useChanges();
   const change = changes.find((c) => c.id === id);
 
@@ -129,12 +132,16 @@ function MudancaDetalhe() {
           <button type="button" className="btn btn-ghost" onClick={() => window.print()}>
             <Printer size={16} /> Imprimir
           </button>
-          <Link to={`/mudancas/${change.id}/editar`} className="btn btn-ghost">
-            <Pencil size={16} /> Editar
-          </Link>
-          <button type="button" className="btn btn-danger" onClick={handleDelete}>
-            <Trash2 size={16} /> Excluir
-          </button>
+          {pode(user, "editarMudanca") && (
+            <Link to={`/mudancas/${change.id}/editar`} className="btn btn-ghost">
+              <Pencil size={16} /> Editar
+            </Link>
+          )}
+          {pode(user, "excluirMudanca") && (
+            <button type="button" className="btn btn-danger" onClick={handleDelete}>
+              <Trash2 size={16} /> Excluir
+            </button>
+          )}
         </div>
       </header>
 
@@ -188,17 +195,19 @@ function MudancaDetalhe() {
             </dd>
           </div>
         </dl>
-        <div className="no-print" style={{ marginTop: 16 }}>
-          {change.aprovacao?.aprovada ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => revokeApproval(change.id)}>
-              Remover aprovação
-            </button>
-          ) : (
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => approveChange(change.id, todayISO())}>
-              Aprovar mudança
-            </button>
-          )}
-        </div>
+                {pode(user, "avaliarPlano") && (
+          <div className="no-print" style={{ marginTop: 16 }}>
+            {change.aprovacao?.aprovada ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => revokeApproval(change.id)}>
+                Remover aprovação
+              </button>
+            ) : (
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => approveChange(change.id, todayISO())}>
+                Aprovar mudança
+              </button>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="card">
@@ -282,7 +291,7 @@ function MudancaDetalhe() {
           Responsável: {ef.responsavel || "—"} · Data prevista: {formatDate(ef.dataPrevista)}
         </p>
 
-        {ef.dataReal ? (
+                {ef.dataReal ? (
           <>
             <dl className="meta-grid">
               <div>
@@ -298,14 +307,22 @@ function MudancaDetalhe() {
                 <dd>{ef.observacao || "—"}</dd>
               </div>
             </dl>
-            <div className="no-print" style={{ marginTop: 16 }}>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => reopenEficacia(change.id)}>
-                <RotateCcw size={14} /> Reabrir verificação
-              </button>
-            </div>
+            {pode(user, "verificarEficacia") && (
+              <div className="no-print" style={{ marginTop: 16 }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => reopenEficacia(change.id)}>
+                  <RotateCcw size={14} /> Reabrir verificação
+                </button>
+              </div>
+            )}
           </>
         ) : canVerifyEficacia(change) ? (
-          <EficaciaForm changeId={change.id} />
+          pode(user, "verificarEficacia") ? (
+            <EficaciaForm changeId={change.id} />
+          ) : (
+            <div className="notice info">
+              Aguardando o gestor da área (SGI) registrar a verificação de eficácia.
+            </div>
+          )
         ) : (
           <div className="notice info">Conclua todas as ações para registrar a verificação de eficácia.</div>
         )}
