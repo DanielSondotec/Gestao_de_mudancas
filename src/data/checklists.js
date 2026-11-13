@@ -1,5 +1,6 @@
 // Checklists oficiais do SGI (Manual SGI-75-001, item 6.3 e Anexo I).
 // Textos copiados do modelo SGI-GMU (abas "Qualidade" e "SMS").
+import { gruposComplementares } from "./formulario";
 
 export const CHECKLISTS = {
   qualidade: {
@@ -52,12 +53,28 @@ export const CHECKLISTS = {
 
 export const CHECKLIST_KEYS = Object.keys(CHECKLISTS);
 
-export function itemText(checklist, n) {
+function encontrarComplementar(change, id) {
+  if (!change) return null;
+  for (const grupo of gruposComplementares(change)) {
+    const item = grupo.itens.find((complementar) => complementar.id === id);
+    if (item) return { ...item, grupo: grupo.titulo };
+  }
+  return null;
+}
+
+export function itemText(checklist, n, change) {
+  if (checklist === "comp") {
+    return encontrarComplementar(change, n)?.texto ?? `Pergunta complementar ${n}`;
+  }
   return CHECKLISTS[checklist]?.items.find((i) => i.n === n)?.text ?? "";
 }
 
-// "Qualidade · 3" | "SMS · 14" | "Geral"
-export function itemLabel(checklist, n) {
+// "Qualidade · 3" | "SMS · 14" | "Complementar · loc1" | "Geral"
+export function itemLabel(checklist, n, change) {
   if (!checklist || !n) return "Geral";
+  if (checklist === "comp") {
+    const item = encontrarComplementar(change, n);
+    return item ? `${item.grupo} · ${item.id}` : `Complementar · ${n}`;
+  }
   return `${CHECKLISTS[checklist].short} · ${n}`;
 }

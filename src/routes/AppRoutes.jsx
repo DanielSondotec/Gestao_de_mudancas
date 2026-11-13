@@ -1,5 +1,6 @@
 import { Routes, Route, Link, Navigate, Outlet } from "react-router-dom";
 
+import AberturaForm from "../pages/AberturaForm";
 import MainLayout from "../layouts/MainLayout";
 import RequireAuth from "../components/RequireAuth";
 import { useAuth } from "../hooks/useAuth";
@@ -58,7 +59,7 @@ function AppRoutes() {
           path="/nova-mudanca"
           element={
             <RequirePermission permissao="criarMudanca">
-              <MudancaForm />
+              <AberturaForm />
             </RequirePermission>
           } />
         <Route path="/acoes" element={<Acoes />} />

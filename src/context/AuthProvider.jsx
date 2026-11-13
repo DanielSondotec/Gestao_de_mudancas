@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AuthContext } from "./authContext";
-import { USUARIOS } from "../data/usuarios";
+import { cadastrarUsuario, listarUsuarios } from "../utils/usuarios";
 
 const SESSION_KEY = "sgi-auth:session:v1";
 
@@ -9,10 +9,10 @@ function publico(u) {
   return { usuario: u.usuario, nome: u.nome, papel: u.papel, email: u.email};
 }
 
-function loadSession() {
+function loadSession(usuarios) {
   try {
     const login = localStorage.getItem(SESSION_KEY);
-    const achado = USUARIOS.find((u) => u.usuario === login);
+    const achado = usuarios.find((u) => u.usuario === login);
     return achado ? publico(achado) : null;
   } catch {
     return null; // armazenamento indisponível: segue sem sessão
@@ -20,15 +20,18 @@ function loadSession() {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(loadSession);
+  const [usuarios, setUsuarios] = useState(listarUsuarios);
+  const [user, setUser] = useState(() => loadSession(usuarios));
+  const usuariosPublicos = useMemo(() => usuarios.map(publico), [usuarios]);
 
   const value = useMemo(
     () => ({
       user,
+      usuarios: usuariosPublicos,
 
       // devolve true se entrou, false se usuário ou senha estão errados
       login(usuario, senha) {
-        const achado = USUARIOS.find(
+        const achado = usuarios.find(
           (u) => u.usuario === usuario.trim().toLowerCase() && u.senha === senha,
         );
         if (!achado) return false;
@@ -41,6 +44,14 @@ export function AuthProvider({ children }) {
         return true;
       },
 
+      criarUsuario(dados) {
+        if (user?.papel !== "admin") {
+          throw new Error("Somente administradores podem cadastrar usuários.");
+        }
+        const atualizados = cadastrarUsuario(dados, usuarios);
+        setUsuarios(atualizados);
+      },
+
       logout() {
         try {
           localStorage.removeItem(SESSION_KEY);
@@ -50,7 +61,7 @@ export function AuthProvider({ children }) {
         setUser(null);
       },
     }),
-    [user],
+    [user, usuarios, usuariosPublicos],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

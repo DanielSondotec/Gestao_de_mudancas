@@ -1,33 +1,37 @@
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { STATUS, deriveStatus } from "../utils/changes";
+import { RESUMO_STATUS, deriveSummaryStatus } from "../utils/changes";
 import "../styles/ui.css";
 
 // Mesmas cores dos selos de status.
 const CORES = {
-  [STATUS.PLANEJAMENTO]: "#f59e0b",
-  [STATUS.EM_ANDAMENTO]: "#f97316",
-  [STATUS.AGUARDANDO_EFICACIA]: "#7c3aed",
-  [STATUS.CONCLUIDA]: "#16a34a",
-  [STATUS.REVISAO]: "#dc2626",
+  [RESUMO_STATUS.ABERTURA]: "#64748b",
+  [RESUMO_STATUS.ANALISE]: "#2563eb",
+  [RESUMO_STATUS.PROPOSTA]: "#7c3aed",
+  [RESUMO_STATUS.EXECUCAO]: "#d97706",
+  [RESUMO_STATUS.EFICACIA]: "#0d9488",
+  [RESUMO_STATUS.REVISAO]: "#ea580c",
+  [RESUMO_STATUS.CONCLUIDA]: "#16a34a",
+  [RESUMO_STATUS.CANCELADA]: "#6b7280",
+  [RESUMO_STATUS.ATRASADA]: "#dc2626",
 };
 
 function StatusChart({ changes }) {
-  const data = Object.values(STATUS)
+  const data = Object.values(RESUMO_STATUS)
     .map((status) => ({
       name: status,
-      value: changes.filter((c) => deriveStatus(c) === status).length,
+      value: changes.filter((c) => deriveSummaryStatus(c) === status).length,
     }))
     .filter((d) => d.value > 0);
 
   return (
-    <div className="card">
+    <div className="card dashboard-chart">
       <h2>Mudanças por status</h2>
       <p className="card-sub">Distribuição atual dos registros.</p>
 
       {data.length === 0 ? (
         <div className="empty">Sem dados para exibir.</div>
       ) : (
-        <div style={{ width: "100%", height: 260 }}>
+        <div className="dashboard-chart-body">
           <ResponsiveContainer>
             <PieChart>
               <Pie
@@ -43,7 +47,7 @@ function StatusChart({ changes }) {
                 ))}
               </Pie>
               <Tooltip />
-              <Legend />
+              <Legend verticalAlign="bottom" height={42} wrapperStyle={{ fontSize: 10 }} />
             </PieChart>
           </ResponsiveContainer>
         </div>

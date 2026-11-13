@@ -1,8 +1,10 @@
 import { useRef, useState } from "react";
 import { Download, RotateCcw, Trash2, Upload } from "lucide-react";
 
+import { useAuth } from "../hooks/useAuth";
 import { useChanges } from "../hooks/useChanges";
 import { todayISO } from "../utils/dates";
+import { nomePapel, PAPEIS } from "../utils/permissoes";
 import "../styles/ui.css";
 
 // Validação mínima do arquivo importado: lista de objetos com os campos usados pelo app.
@@ -25,9 +27,30 @@ function isValidBackup(data) {
 }
 
 function Configuracoes() {
-  const { changes, replaceAll, resetToSeed } = useChanges();
+  const { changes, replaceAll, resetToSeed, deleteArchivedChanges } = useChanges();
+  const { usuarios, criarUsuario } = useAuth();
   const fileRef = useRef(null);
   const [msg, setMsg] = useState(null); // { tipo: "info" | "warn", texto }
+  const [limpandoArquivo, setLimpandoArquivo] = useState(false);
+  const quantidadeArquivada = changes.filter((change) => change.arquivadaEm).length;
+  const [novoUsuario, setNovoUsuario] = useState({
+    usuario: "",
+    nome: "",
+    email: "",
+    senha: "",
+    papel: "user",
+  });
+
+  function cadastrar(e) {
+    e.preventDefault();
+    try {
+      criarUsuario(novoUsuario);
+      setNovoUsuario({ usuario: "", nome: "", email: "", senha: "", papel: "user" });
+      setMsg({ tipo: "info", texto: "Usuário cadastrado com sucesso." });
+    } catch (error) {
+      setMsg({ tipo: "warn", texto: error.message });
+    }
+  }
 
   function exportar() {
     const blob = new Blob([JSON.stringify(changes, null, 2)], { type: "application/json" });
@@ -48,24 +71,50 @@ function Configuracoes() {
       const data = JSON.parse(await file.text());
       if (!isValidBackup(data)) throw new Error("formato inválido");
       if (!window.confirm(`Importar ${data.length} registro(s)? Os dados atuais serão substituídos.`)) return;
-      replaceAll(data);
+      await replaceAll(data);
       setMsg({ tipo: "info", texto: `${data.length} registro(s) importado(s).` });
-    } catch {
-      setMsg({ tipo: "warn", texto: "Arquivo inválido. Use um backup exportado por este sistema." });
+    } catch (error) {
+      setMsg({
+        tipo: "warn",
+        texto: error instanceof Error
+          ? `Não foi possível importar: ${error.message}`
+          : "Arquivo inválido. Use um backup exportado por este sistema.",
+      });
     }
   }
 
-  function restaurar() {
+  async function restaurar() {
     if (window.confirm("Restaurar os dados de exemplo? Os registros atuais serão substituídos.")) {
-      resetToSeed();
-      setMsg({ tipo: "info", texto: "Dados de exemplo restaurados." });
+      try {
+        await resetToSeed();
+        setMsg({ tipo: "info", texto: "Dados de exemplo restaurados." });
+      } catch (error) {
+        setMsg({
+          tipo: "warn",
+          texto: error instanceof Error ? error.message : "Não foi possível restaurar os dados de exemplo.",
+        });
+      }
     }
   }
 
-  function limpar() {
-    if (window.confirm("Apagar TODAS as mudanças? Essa ação não pode ser desfeita (exporte um backup antes).")) {
-      replaceAll([]);
-      setMsg({ tipo: "info", texto: "Todos os registros foram apagados." });
+  async function limparArquivo() {
+    if (quantidadeArquivada === 0 || limpandoArquivo) return;
+    if (!window.confirm(`Excluir definitivamente ${quantidadeArquivada} mudança(s) arquivada(s) e seus anexos? Essa ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setLimpandoArquivo(true);
+    setMsg(null);
+    try {
+      const removidas = await deleteArchivedChanges();
+      setMsg({ tipo: "info", texto: `${removidas} mudança(s) arquivada(s) e seus anexos foram excluídos.` });
+    } catch (error) {
+      setMsg({
+        tipo: "warn",
+        texto: error instanceof Error ? error.message : "Não foi possível excluir os registros arquivados.",
+      });
+    } finally {
+      setLimpandoArquivo(false);
     }
   }
 
@@ -82,8 +131,103 @@ function Configuracoes() {
       {msg && <div className={`notice ${msg.tipo}`}>{msg.texto}</div>}
 
       <section className="card">
+        <h2>Usuários</h2>
+        <p className="card-sub">
+          Cadastre acessos para este navegador. Como o sistema não possui servidor, os usuários e senhas
+          ficam salvos localmente e não são sincronizados entre computadores.
+        </p>
+
+        <form className="form-grid" onSubmit={cadastrar}>
+          <div className="field">
+            <label htmlFor="novo-usuario">Login</label>
+            <input
+              id="novo-usuario"
+              className="input"
+              autoComplete="off"
+              value={novoUsuario.usuario}
+              onChange={(e) => setNovoUsuario({ ...novoUsuario, usuario: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="novo-nome">Nome completo</label>
+            <input
+              id="novo-nome"
+              className="input"
+              autoComplete="name"
+              value={novoUsuario.nome}
+              onChange={(e) => setNovoUsuario({ ...novoUsuario, nome: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="novo-email">E-mail</label>
+            <input
+              id="novo-email"
+              type="email"
+              className="input"
+              autoComplete="email"
+              value={novoUsuario.email}
+              onChange={(e) => setNovoUsuario({ ...novoUsuario, email: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="nova-senha">Senha inicial</label>
+            <input
+              id="nova-senha"
+              type="password"
+              className="input"
+              autoComplete="new-password"
+              minLength={6}
+              value={novoUsuario.senha}
+              onChange={(e) => setNovoUsuario({ ...novoUsuario, senha: e.target.value })}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="novo-papel">Perfil</label>
+            <select
+              id="novo-papel"
+              className="input"
+              value={novoUsuario.papel}
+              onChange={(e) => setNovoUsuario({ ...novoUsuario, papel: e.target.value })}
+            >
+              {Object.entries(PAPEIS).map(([papel, nome]) => (
+                <option key={papel} value={papel}>{nome}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field" style={{ alignSelf: "end" }}>
+            <button type="submit" className="btn btn-primary">Cadastrar usuário</button>
+          </div>
+        </form>
+
+        <div className="table-scroll" style={{ marginTop: 24 }}>
+          <table className="data-table">
+            <thead>
+              <tr><th>Nome</th><th>Login</th><th>E-mail</th><th>Perfil</th></tr>
+            </thead>
+            <tbody>
+              {usuarios.map((usuario) => (
+                <tr key={usuario.usuario}>
+                  <td>{usuario.nome}</td>
+                  <td>{usuario.usuario}</td>
+                  <td>{usuario.email}</td>
+                  <td>{nomePapel(usuario.papel)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card">
         <h2>Dados</h2>
-        <p className="card-sub">Os registros ficam salvos apenas neste navegador. Faça backups periódicos.</p>
+        <p className="card-sub">
+          Mudanças e histórico ficam no armazenamento local deste navegador; anexos são salvos separadamente.
+          O backup JSON inclui os registros, mas não os arquivos anexados.
+        </p>
 
         <div className="settings-row">
           <div>
@@ -120,11 +264,16 @@ function Configuracoes() {
 
         <div className="settings-row">
           <div>
-            <h3>Apagar tudo</h3>
-            <p>Remove todas as mudanças cadastradas.</p>
+            <h3>Excluir mudanças arquivadas</h3>
+            <p>Remove definitivamente os {quantidadeArquivada} registros arquivados e seus anexos. Mudanças ativas não podem ser apagadas por esta opção.</p>
           </div>
-          <button type="button" className="btn btn-danger" onClick={limpar}>
-            <Trash2 size={16} /> Apagar
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={limparArquivo}
+            disabled={quantidadeArquivada === 0 || limpandoArquivo}
+          >
+            <Trash2 size={16} /> {limpandoArquivo ? "Excluindo..." : "Excluir arquivo"}
           </button>
         </div>
       </section>

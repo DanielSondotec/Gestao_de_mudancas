@@ -5,8 +5,8 @@
 //
 // papel: "admin" | "gestor" | "gestor_area" | "user"
 export const USUARIOS = [
-  { usuario: "daniel", senha: "123456", nome: "Daniel Neves", papel: "admin", email: "daniel.neves@sondotecnica.com.br" },
-  { usuario: "geziel", senha: "123456", nome: "Geziel Lima", papel: "gestor", email: "geziel@exemplo.com" },
-  { usuario: "fatima", senha: "123456", nome: "Maria de Fátima", papel: "gestor_area", email: "fatima@exemplo.com" },
-  { usuario: "mayara", senha: "123456", nome: "Mayara Cavalcante de Paula", papel: "user", email: "mayara@exemplo.com" },
+  { usuario: "admin", senha: "123456", nome: "Administrador", papel: "admin", email: "admin@sondotecnica.com.br" },
+  { usuario: "gestor", senha: "123456", nome: "Gestor", papel: "gestor", email: "gestor@exemplo.com" },
+  { usuario: "gestorarea", senha: "123456", nome: "Gestor de Área", papel: "gestor_area", email: "gestorarea@exemplo.com" },
+  { usuario: "user", senha: "123456", nome: "Usuário", papel: "user", email: "user@exemplo.com" },
 ];

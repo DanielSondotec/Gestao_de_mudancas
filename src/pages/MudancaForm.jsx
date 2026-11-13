@@ -1,25 +1,30 @@
 import { Fragment, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { Save } from "lucide-react";
 
+import { useAuth } from "../hooks/useAuth";
 import { useChanges } from "../hooks/useChanges";
-import { CHECKLISTS, CHECKLIST_KEYS, itemLabel } from "../data/checklists";
+import { ETAPA } from "../data/formulario";
+import { CHECKLISTS, CHECKLIST_KEYS, itemLabel, itemText } from "../data/checklists";
 import {
-  actionRef,
   blankAction,
   blankChange,
   buildPayload,
-  parseRef,
+  deriveStatus,
+  STATUS,
   simItems,
   simWithoutAction,
-  validateChange,
+  validateActionPlanning,
+  validateChangeOpening,
 } from "../utils/changes";
 import "../styles/ui.css";
 
-function MudancaForm() {
+const TITULOS_MUDANCA = ["Simulação A", "Simulação B", "Simulação C", "Simulação D"];
+
+function MudancaForm({ change: embeddedChange = null, onSaved, onCancel }) {
   const { id } = useParams();
   const { changes } = useChanges();
-  const existing = id ? changes.find((c) => c.id === id) : null;
+  const existing = embeddedChange ?? (id ? changes.find((c) => c.id === id) : null);
 
   if (id && !existing) {
     return (
@@ -32,13 +37,57 @@ function MudancaForm() {
     );
   }
 
+  if (existing?.arquivadaEm) {
+    return (
+      <div className="card empty">
+        <h3>Esta mudança está arquivada</h3>
+        <p>Registros arquivados ficam disponíveis somente para consulta.</p>
+        <p>
+          <Link to={`/mudancas/${existing.id}`}>Voltar para a mudança</Link>
+        </p>
+      </div>
+    );
+  }
+
+  const isPlanning = Boolean(existing) && (
+    existing.etapa
+      ? existing.etapa === ETAPA.PROPOSTA
+      : deriveStatus(existing) === STATUS.PLANEJAMENTO ||
+        simWithoutAction(existing).length > 0 ||
+        validateActionPlanning(existing).length > 0
+  );
+
+  if (existing && !isPlanning) {
+    return (
+      <div className="card empty">
+        <h3>Esta mudança não está na etapa de planejamento</h3>
+        <p>O formulário de edição fica disponível somente durante a etapa de planejamento.</p>
+        <p>
+          <Link to={`/mudancas/${existing.id}`}>Voltar para a mudança</Link>
+        </p>
+      </div>
+    );
+  }
+
   // key força um estado novo quando troca de "nova" para "editar" (sem useEffect)
-  return <FormBody key={id ?? "nova"} existing={existing} />;
+  return (
+    <FormBody
+      key={existing?.id ?? id ?? "nova"}
+      existing={existing}
+      isPlanning={isPlanning}
+      onSaved={onSaved}
+      onCancel={onCancel}
+    />
+  );
 }
 
 function toForm(existing) {
   const base = blankChange();
   const copy = structuredClone(existing);
+  const acoes = copy.acoes ?? [];
+  const planosFaltantes = simItems(copy)
+    .filter((sim) => !acoes.some((acao) => acao.checklist === sim.checklist && acao.item === sim.item))
+    .map((sim) => blankAction(sim.checklist, sim.item));
   return {
     ...base,
     ...copy,
@@ -46,11 +95,13 @@ function toForm(existing) {
     respostas: { ...base.respostas, ...copy.respostas },
     eficacia: { ...base.eficacia, ...copy.eficacia },
     outros: { ...base.outros, ...copy.outros },
+    acoes: [...acoes, ...planosFaltantes],
   };
 }
 
-function FormBody({ existing }) {
+function FormBody({ existing, isPlanning, onSaved, onCancel }) {
   const navigate = useNavigate();
+  const { usuarios } = useAuth();
   const { addChange, updateChange } = useChanges();
   const [form, setForm] = useState(() => (existing ? toForm(existing) : blankChange()));
   const [errors, setErrors] = useState([]);
@@ -75,14 +126,8 @@ function FormBody({ existing }) {
       },
     }));
 
-  const setEficacia = (field, value) =>
-    setForm((f) => ({ ...f, eficacia: { ...f.eficacia, [field]: value } }));
-
   const setOutros = (key, value) =>
     setForm((f) => ({ ...f, outros: { ...f.outros, [key]: value } }));
-
-  const addAction = (checklist = null, item = null) =>
-    setForm((f) => ({ ...f, acoes: [...f.acoes, blankAction(checklist, item)] }));
 
   const patchAction = (actionId, patch) =>
     setForm((f) => ({
@@ -90,12 +135,9 @@ function FormBody({ existing }) {
       acoes: f.acoes.map((a) => (a.id === actionId ? { ...a, ...patch } : a)),
     }));
 
-  const removeAction = (actionId) =>
-    setForm((f) => ({ ...f, acoes: f.acoes.filter((a) => a.id !== actionId) }));
-
   function handleSubmit(e) {
     e.preventDefault();
-    const errs = validateChange(form);
+    const errs = isPlanning ? validateActionPlanning(form) : validateChangeOpening(form);
     setErrors(errs);
     if (errs.length) {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -108,36 +150,25 @@ function FormBody({ existing }) {
 
     if (existing) {
       updateChange(existing.id, payload);
-      navigate(`/mudancas/${existing.id}`);
+      if (onSaved) onSaved();
+      else navigate(`/mudancas/${existing.id}`);
     } else {
       const novoId = addChange(payload);
       navigate(`/mudancas/${novoId}`);
     }
   }
 
-  const sims = simItems(form);
-  const semAcao = simWithoutAction(form);
-
-  // opções do vínculo da ação: geral + itens "Sim" (+ vínculo atual, se a resposta mudou depois)
-  const refOptions = (acao) => {
-    const opts = [{ value: "geral", label: "Geral" }];
-    sims.forEach((s) =>
-      opts.push({ value: `${s.checklist}:${s.item}`, label: itemLabel(s.checklist, s.item) }),
-    );
-    const atual = actionRef(acao);
-    if (!opts.some((o) => o.value === atual)) {
-      opts.push({ value: atual, label: itemLabel(acao.checklist, acao.item) });
-    }
-    return opts;
-  };
-
   return (
     <form className="page" onSubmit={handleSubmit} noValidate>
       <header className="page-header">
         <div>
           <span className="page-eyebrow">SISTEMA SGI / GESTÃO</span>
-          <h1>{existing ? `Editar ${existing.id}` : "Nova mudança"}</h1>
-          <p>Preencha os checklists e o plano de ações conforme o Manual SGI-75-001.</p>
+          <h1>{isPlanning ? `Planejamento — ${existing.id}` : "Nova mudança"}</h1>
+          <p>
+            {isPlanning
+              ? 'Crie um plano de ação para cada item respondido como "Sim".'
+              : "Registre a mudança e responda todos os itens dos checklists aplicáveis."}
+          </p>
         </div>
       </header>
 
@@ -152,13 +183,22 @@ function FormBody({ existing }) {
         </div>
       )}
 
+      {!isPlanning && (
+        <>
       <section className="card">
         <h2>Identificação</h2>
         <p className="card-sub">Dados gerais da mudança.</p>
         <div className="form-grid">
           <div className="field span-2">
             <label htmlFor="titulo">Título da mudança</label>
-            <input id="titulo" className="input" value={form.titulo} onChange={(e) => set("titulo", e.target.value)} />
+            <select id="titulo" className="input" value={form.titulo} onChange={(e) => set("titulo", e.target.value)}>
+              <option value="">Selecione o título</option>
+              {TITULOS_MUDANCA.map((titulo) => (
+                <option key={titulo} value={titulo}>
+                  {titulo}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="field span-2">
             <label htmlFor="descricao">Descrição</label>
@@ -271,129 +311,137 @@ function FormBody({ existing }) {
           </div>
         </section>
       ))}
+        </>
+      )}
 
+      {isPlanning && (
       <section className="card">
-        <h2>Acompanhamento da mudança</h2>
+        <h2>Planos de ação · 5W2H</h2>
         <p className="card-sub">
-          Para todas as respostas "Sim" e para as ações necessárias à mudança, registre ação, responsável e prazo.
+          Um plano é criado automaticamente para cada pergunta marcada como “Sim” pelo cliente. Preencha os campos 5W2H.
         </p>
 
-        {semAcao.length > 0 && (
-          <div className="chip-row">
-            {semAcao.map((s) => (
-              <button
-                type="button"
-                key={`${s.checklist}:${s.item}`}
-                className="chip"
-                onClick={() => addAction(s.checklist, s.item)}
-                title="Adicionar ação para este item"
-              >
-                <Plus size={12} /> {itemLabel(s.checklist, s.item)} sem ação
-              </button>
-            ))}
-          </div>
+        {form.acoes.length === 0 && (
+          <div className="notice info">O cliente não marcou perguntas como “Sim”; não há planos de ação a montar.</div>
         )}
 
-        {form.acoes.length === 0 && <p className="hint">Nenhuma ação cadastrada.</p>}
-
         {form.acoes.map((a, i) => (
-          <div className="action-edit-row" key={a.id}>
-            <div className="field">
-              <select
-                className="input"
-                aria-label={`Vínculo da ação ${i + 1}`}
-                value={actionRef(a)}
-                onChange={(e) => patchAction(a.id, parseRef(e.target.value))}
-              >
-                {refOptions(a).map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+          <div className="action-plan-card" key={a.id}>
+            <h3>Plano {i + 1} · {itemLabel(a.checklist, a.item, form)}</h3>
+            <p className="hint">{itemText(a.checklist, a.item, form)}</p>
+            {((a.checklist === "qualidade" && a.item === 11) ||
+              (a.checklist === "sms" && a.item === 21)) &&
+              form.outros?.[a.checklist] && (
+                <p className="hint">Detalhe informado pelo cliente: {form.outros[a.checklist]}</p>
+              )}
+            <div className="form-grid">
+              <div className="field span-2">
+                <label htmlFor={`acao-${a.id}`}>O quê? Ação planejada *</label>
+                <textarea
+                  id={`acao-${a.id}`}
+                  className="input"
+                  rows={2}
+                  value={a.acao ?? ""}
+                  onChange={(e) => patchAction(a.id, { acao: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={`porque-${a.id}`}>Por quê? *</label>
+                <textarea
+                  id={`porque-${a.id}`}
+                  className="input"
+                  rows={2}
+                  value={a.porque ?? ""}
+                  onChange={(e) => patchAction(a.id, { porque: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={`onde-${a.id}`}>Onde? *</label>
+                <input
+                  id={`onde-${a.id}`}
+                  className="input"
+                  value={a.onde ?? ""}
+                  onChange={(e) => patchAction(a.id, { onde: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={`quando-${a.id}`}>Quando? Prazo *</label>
+                <input
+                  id={`quando-${a.id}`}
+                  type="date"
+                  className="input"
+                  value={a.prazo ?? ""}
+                  onChange={(e) => patchAction(a.id, { prazo: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={`quem-${a.id}`}>Quem? Responsável *</label>
+                <select
+                  id={`quem-${a.id}`}
+                  className="input"
+                  value={a.responsavelId ?? ""}
+                  onChange={(e) => {
+                    const selecionado = usuarios.find((u) => u.usuario === e.target.value);
+                    patchAction(a.id, {
+                      responsavelId: selecionado?.usuario ?? "",
+                      responsavel: selecionado?.nome ?? "",
+                    });
+                  }}
+                  required
+                >
+                  <option value="">Selecione o responsável</option>
+                  {usuarios.filter((u) => u.papel !== "admin").map((u) => (
+                    <option key={u.usuario} value={u.usuario}>
+                      {u.nome} — {u.usuario}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor={`como-${a.id}`}>Como? Método de execução *</label>
+                <textarea
+                  id={`como-${a.id}`}
+                  className="input"
+                  rows={2}
+                  value={a.como ?? ""}
+                  onChange={(e) => patchAction(a.id, { como: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={`quanto-${a.id}`}>Quanto? Custo estimado *</label>
+                <input
+                  id={`quanto-${a.id}`}
+                  className="input"
+                  placeholder="R$ 0,00 ou Não se aplica"
+                  value={a.quanto ?? ""}
+                  onChange={(e) => patchAction(a.id, { quanto: e.target.value })}
+                  required
+                />
+              </div>
             </div>
-            <input
-              className="input"
-              placeholder="Ação"
-              aria-label={`Descrição da ação ${i + 1}`}
-              value={a.acao}
-              onChange={(e) => patchAction(a.id, { acao: e.target.value })}
-            />
-            <input
-              className="input"
-              placeholder="Responsável"
-              aria-label={`Responsável da ação ${i + 1}`}
-              value={a.responsavel}
-              onChange={(e) => patchAction(a.id, { responsavel: e.target.value })}
-            />
-            <input
-              type="date"
-              className="input"
-              aria-label={`Prazo da ação ${i + 1}`}
-              value={a.prazo}
-              onChange={(e) => patchAction(a.id, { prazo: e.target.value })}
-            />
-            <input
-              type="date"
-              className="input"
-              aria-label={`Término da ação ${i + 1}`}
-              value={a.termino ?? ""}
-              onChange={(e) => patchAction(a.id, { termino: e.target.value || null })}
-            />
-            <button
-              type="button"
-              className="btn btn-danger btn-icon"
-              aria-label={`Remover ação ${i + 1}`}
-              onClick={() => removeAction(a.id)}
-            >
-              <Trash2 size={15} />
-            </button>
           </div>
         ))}
-
-        <div style={{ marginTop: 14 }}>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => addAction()}>
-            <Plus size={14} /> Adicionar ação
-          </button>
-        </div>
       </section>
-
-      <section className="card">
-        <h2>Verificação de eficácia</h2>
-        <p className="card-sub">
-          Análise crítica da mudança (prazo máximo: 6 meses após a implementação da última ação).
-        </p>
-        <div className="form-grid">
-          <div className="field">
-            <label htmlFor="ef-resp">Responsável</label>
-            <input
-              id="ef-resp"
-              className="input"
-              value={form.eficacia.responsavel}
-              onChange={(e) => setEficacia("responsavel", e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="ef-prev">Data prevista</label>
-            <input
-              id="ef-prev"
-              type="date"
-              className="input"
-              value={form.eficacia.dataPrevista ?? ""}
-              onChange={(e) => setEficacia("dataPrevista", e.target.value)}
-            />
-            <span className="hint">Em branco: usa o prazo máximo de 6 meses após a última ação.</span>
-          </div>
-        </div>
-      </section>
+      )}
 
       <div className="page-actions">
         <button type="submit" className="btn btn-primary">
-          <Save size={16} /> {existing ? "Salvar alterações" : "Registrar mudança"}
+          <Save size={16} /> {isPlanning ? "Salvar planejamento" : "Registrar mudança"}
         </button>
-        <Link to={existing ? `/mudancas/${existing.id}` : "/mudancas"} className="btn btn-ghost">
-          Cancelar
-        </Link>
+        {onCancel ? (
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            Cancelar
+          </button>
+        ) : (
+          <Link to={existing ? `/mudancas/${existing.id}` : "/mudancas"} className="btn btn-ghost">
+            Cancelar
+          </Link>
+        )}
       </div>
     </form>
   );

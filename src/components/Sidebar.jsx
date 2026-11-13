@@ -11,7 +11,9 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../hooks/useAuth";
+import { useChanges } from "../hooks/useChanges";
 import { pode, nomePapel } from "../utils/permissoes";
+import { canVerifyEficacia, validateActionPlanning } from "../utils/changes";
 import "./Sidebar.css";
 
 // "permissao": se existir, só aparece para quem tem essa permissão
@@ -27,8 +29,30 @@ const linkClass = ({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`;
 
 function Sidebar({ aberta, onFechar }) {
   const { user, logout } = useAuth();
+  const { changes } = useChanges();
 
   const visiveis = menuItems.filter((item) => !item.permissao || pode(user, item.permissao));
+  const acoesPendentes = changes.reduce(
+    (total, change) =>
+      total +
+      (change.arquivadaEm ? [] : change.acoes).filter(
+        (action) =>
+          action.responsavelId === user?.usuario &&
+          !action.termino &&
+          action.statusPlano !== "aguardando_aprovacao" &&
+          action.statusPlano !== "aprovado",
+      ).length,
+    0,
+  );
+  const tarefasMudancas = changes.reduce((total, change) => {
+    if (change.arquivadaEm) return total;
+    const planejamento = pode(user, "editarMudanca") ? validateActionPlanning(change).length : 0;
+    const avaliacoes = pode(user, "avaliarPlano")
+      ? change.acoes.filter((action) => action.statusPlano === "aguardando_aprovacao").length
+      : 0;
+    const eficacia = pode(user, "verificarEficacia") && canVerifyEficacia(change) ? 1 : 0;
+    return total + planejamento + avaliacoes + eficacia;
+  }, 0);
 
   return (
     <aside className={`sidebar ${aberta ? "" : "fechada"}`}>
@@ -57,6 +81,12 @@ function Sidebar({ aberta, onFechar }) {
         <nav className="sidebar-nav">
           {visiveis.map((item) => {
             const Icon = item.icon;
+            const count =
+              item.path === "/acoes"
+                ? acoesPendentes
+                : item.path === "/mudancas"
+                  ? tarefasMudancas
+                  : 0;
 
             return (
               <NavLink
@@ -67,6 +97,11 @@ function Sidebar({ aberta, onFechar }) {
               >
                 <Icon size={19} />
                 <span>{item.title}</span>
+                {count > 0 && (
+                  <span className="badge pendente" style={{ marginLeft: "auto" }} aria-label={`${count} pendências`}>
+                    {count}
+                  </span>
+                )}
               </NavLink>
             );
           })}
